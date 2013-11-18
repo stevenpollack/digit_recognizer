@@ -1,1 +1,1 @@
-There are 3 folders here: data, analysis, and manuscripts. 
+There are 3 folders here: original_files, analysis, and manuscripts. 
