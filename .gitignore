@@ -1,0 +1,13 @@
+.Rproj.user
+*.Rproj
+*.Rhistory
+*.RData
+*.pdf
+*.log
+*.gz
+*cache*
+*.rdb
+*.rdx
+*.zip
+*.csv
+*.html
