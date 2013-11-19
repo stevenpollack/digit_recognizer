@@ -4,6 +4,8 @@
 *.RData
 *.pdf
 *.log
+*.aux
+*.out
 *.gz
 *cache*
 *.rdb
