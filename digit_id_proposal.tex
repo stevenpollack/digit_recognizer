@@ -1,0 +1,70 @@
+\documentclass[10pt]{article}
+
+%%% aesthetic packages
+\usepackage{fancyhdr,palatino,amsmath,amssymb,hyperref}
+\usepackage[textwidth=6.5in, textheight=8.5in]{geometry}
+
+%%% packages for pseudocode / \texttt{}
+\usepackage{listings}
+\usepackage{inconsolata}
+
+%%% math macros
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Q}{\mathcal{Q}}
+\renewcommand{\H}{\mathcal{H}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\K}{\mathcal{K}}
+\newcommand{\U}{\mathcal{U}}
+\renewcommand{\u}{\mathbf{u}}
+\renewcommand{\v}{\mathbf{v}}
+\newcommand{\I}{\mathbf{I}}
+\newcommand{\x}{\mathbf{x}}
+\newcommand{\X}{\mathbf{X}}
+\newcommand{\Y}{\mathbf{Y}}
+\newcommand{\one}{\mathbf{1}}
+\newcommand{\zero}{\mathbf{0}}
+\newcommand{\R}{\mathbb{R}}
+\DeclareMathOperator{\cS}{colSums}
+\DeclareMathOperator{\sgn}{sgn}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\cov}{cov}
+\DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator{\col}{col}
+\DeclareMathOperator{\proj}{proj}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator{\expit}{expit}
+\DeclareMathOperator{\argmin}{argmin}
+\DeclareMathOperator{\argmax}{argmax}
+
+%%% fancyhdr parameters
+% \lhead{}
+% \chead{}
+% \rhead{}
+% \cfoot{\thepage}
+
+\title{An algorithm for the identification of handwritten digits: \\ PHC240D final project proposal}
+\author{Lucia Petito, Steven Pollack}
+\date{}
+
+\begin{document}
+\maketitle
+
+\paragraph{Background:}
+Handwriting varies greatly from one individual to another, and even for a single individual, significant variation can occur due to illumination conditions, sitting position, type of utensil, and even emotional state.  Correctly identifying handwritten numbers is a very challenging problem that has many immediate applications, for example so banks can use machines to process handwritten checks instead of using valuable person-time.  
+
+
+\paragraph{Data:} The MNIST (``Modified National Institute of Standards and Technology'') database of handwritten digits is a subset of the famous NIST dataset.  Here, the digits have been size-normalized and centered in a fixed-size image so the data processing and cleaning is minimal.  This dataset has been extensively studied: a summary of this work exists at \url{yann.lecun.com/exdb/mnist/index.html}.
+
+The online data science competition host, \url{Kaggle.com} began a competition on July 25, 2012 with the explicit purpose of having teams build their own handwritten digit detectors. The purpose of this competition was to give people the opportunity to learn and apply different machine learning algorithms on an accessible dataset.  With said competition, a data set consisting of 42,000 training images, and 28,000 testing images was made available. 
+
+In the training set, each row is an image.  The first column, \verb|label|, correctly identifies the handwritten number.  The following 784 variables represent each pixel in the $28 \times 28$ image, ordered by row.  Each pixel corresponds to the darkness of the image on a grey scale, valued in $[0, 255]$.  
+\paragraph{Data Files}
+\begin{itemize}
+  \item \texttt{training.csv}: list of training 42,000 images. Each row contains \verb|ImageID|, the correct number, then the image data as a row-ordered list of pixels.
+  \item \texttt{test.csv}: list of 28,000 test images. Each row contains \verb|ImageID| and image data as a row-ordered list of pixels.
+\end{itemize}
+
+\paragraph{Proposal:} We intend to participate in the Kaggle competition and build our our own handwritten digit recognition algorithm based on the data. In building our algorithm, we will investigate the efficacy of neural networks, SVMs, logistic regression, and $k$-nearest neighbors (among others). Finally, the current leaderboard requires identifying at least 97.6\% of the images in the test set correctly to break into a top-40 position. So in the absence of better objectives, we will aim for creating an algorithm that yields a misclassification rate of less than 2.4\% as a measure of success.
+
+\end{document}
