@@ -1,7 +1,10 @@
-The two data files are in the main folder (it took a lot to get them to upload to git so I'm leaving them there and not touching them).
+Classify handwritten digits using the famous MNIST data
+========================================================
 
-The gitignore file contains unnecessary file extensions.
+This repo will contain R (and maybe Python) code to classify handwritten digits taken from the MNIST data set. 
 
-The tutorial file has the tutorials from the Kaggle website about KNN and RFs.
+Data can be downloaded into the `data` directory by cloning this repo and running the shell script:
 
-The manuscripts file has the project proposal in it.
+`sh data_and_benchmarks\get_competition_data.sh`
+
+For the time being, `repo\manuscripts\` contains the technical files documenting this project. They may be phased out later.
