@@ -1,6 +1,7 @@
 .Rproj.user
 *.Rproj
 *.Rhistory
+*.Rdata
 *.RData
 *.pdf
 *.log
