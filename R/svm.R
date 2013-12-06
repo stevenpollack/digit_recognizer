@@ -1,6 +1,6 @@
 ### libraries for SVM
-library(e1071) ### for svm and tuning
-library(kernlab) ### for sigma estimation (sigest)
+library(e1071) ### for classAgreement()
+library(kernlab) ### for ksvm 
 
 ### library for parallel computation
 library(doMC)
@@ -13,20 +13,23 @@ library(reshape2)
 
 ### load data
 ### first column has digit label
+### -----------------------------
 digit.data <- read.csv(file="data_and_benchmarks/train.csv",header=T)
 rownames(digit.data) <- paste("image",1:42000,sep="")
 digit.data[,1] <- as.factor(digit.data[,1])
 ### tranpose data for faster manipulation
 t.digit.data <- t(digit.data)
+### ----------------------------
 
 ### visualize first 15 images
+### ---------------------
 llply(.data=1:15,.fun=function(index){
   ### digits are 28px x 28px images
   sample.digit <- matrix(data=as.numeric(t.digit.data[-1,index]),nrow=28,ncol=28)
   plot.title <- paste("image", index, sep="")
   ggplot(data=melt(sample.digit,varnames=c("X","Y")), aes(x=X,y=-Y,fill=value),show_guide=F) + geom_tile() + labs(x="",y="",title=plot.title)  
 })
-
+### -----------------------
 
 sigma.est <- sigest(label~.,data=digit.data) # median at 1.47e-7
 
@@ -90,7 +93,6 @@ system.time(mass.prediction <- alply(.data=test.set,.margins=1,.parallel=F,.fun=
 
 classAgreement(table(unlist(mass.prediction),test.set[,1]))
 ### diag: 0.9101
-
 
 ### look into overhead of partitioning training set and training multiple
 ### svms, and voting,
