@@ -25,7 +25,7 @@ rf.seq <- dlply(.data=par.grid,.variables=.(mtry,training.size),.parallel=T,.fun
   train.time <- system.time(rf.tmp <- randomForest(label~.,data=digit.data[1:row$training.size,], xtest=test.set[,-1], ytest=test.set[,1],norm.votes=F,mtry=row$mtry))
   rf.test.accuracy <- sum(diag(rf.tmp$test$confusion[,1:10]))/dim(test.set)[1]
   list(rf=rf.tmp,accuracy=rf.test.accuracy,train.time=train.time)
-}))
+})
 
 # save intermediate work
 workspace.vars <- ls()[which(!ls() %in% c("digit.data","learning.set","test.set"))]
