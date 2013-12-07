@@ -22,4 +22,3 @@ if (!"digit.data" %in% ls()) {
     }
   }
 }
->>>>>>> master

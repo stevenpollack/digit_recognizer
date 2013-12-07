@@ -6,13 +6,8 @@
 
 ### check that data is loaded
 if (!"digit.data" %in% ls()) {
-  load.status <- try(load(file="data_and_benchmarks/training_data.Rdata"),silent=T)
-  
-  if (class(load.status)=="try-error") {
     source(file="R/load_data.R")
-  }
 }
-
 
 library(e1071) # for classAgreement()
 library(kernlab) # for ksvm()
@@ -24,8 +19,8 @@ library(ggplot2) # for data-viz
 ### register parallel backend
 registerDoMC(cores=detectCores()) 
 
-sample.sizes <- c(200*2^(0:5),10000,200*2^6)
-test.set <- digit.data[28001:33000,]
+sample.sizes <- c(200*2^(0:5),10000,200*2^6,15000,20000,28000)
+test.set <- digit.data[28001:42000,]
 
 ### test non-cross-validated Gaussian
 test1.time <- system.time(speed.test <- llply(.data=sample.sizes,.parallel=T,.fun=function(sample.size){
