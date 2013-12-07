@@ -19,8 +19,8 @@ library(ggplot2) # for data-viz
 ### register parallel backend
 registerDoMC(cores=detectCores()) 
 
-sample.sizes <- c(200*2^(0:5),10000,200*2^6,15000,20000,28000)
-test.set <- digit.data[28001:42000,]
+sample.sizes <- c(200*2^(0:5),10000,200*2^6,15000,20000,28000,35000,40000)
+test.set <- digit.data[40001:42000,]
 
 ### test non-cross-validated Gaussian
 test1.time <- system.time(speed.test <- llply(.data=sample.sizes,.parallel=T,.fun=function(sample.size){
@@ -59,8 +59,8 @@ test.results <- rbind(test.speed.results,test.accuracy.results)
 
 test.results.plot <- ggplot(data=melt(test.results,id.vars=c("sample.size","stat")), aes(x=sample.size,y=value,color=variable,group=stat:variable)) + geom_point() + geom_line() + facet_grid(facets=stat~.,scales="free_y")
 
-workspace.vars <- list(ls()[which(!ls() %in% c("digit.data","training.set"))])
+workspace.vars <- ls()[which(!ls() %in% c("digit.data","training.set"))]
 
-save(workspace.vars, file="speed-test_results.Rdata")
+save(list=workspace.vars, file=paste("speed-test_results-", format(Sys.time(), "%H:%M:%S-%d-%m-%Y"),".Rdata",sep=""))
 
 ### take away: marginal returns after training set exceeds 10k.
