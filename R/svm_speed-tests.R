@@ -6,7 +6,7 @@
 
 ### check that data is loaded
 if (!"digit.data" %in% ls()) {
-    source(file="R/load_data.R")
+  source(file="R/load_data.R")
 }
 
 library(e1071) # for classAgreement()
@@ -59,7 +59,7 @@ test.results <- rbind(test.speed.results,test.accuracy.results)
 
 test.results.plot <- ggplot(data=melt(test.results,id.vars=c("sample.size","stat")), aes(x=sample.size,y=value,color=variable,group=stat:variable)) + geom_point() + geom_line() + facet_grid(facets=stat~.,scales="free_y")
 
-workspace.vars <- ls()[which(!ls() %in% c("digit.data","training.set"))]
+workspace.vars <- ls()[which(!ls() %in% c("digit.data","training.set","test.set"))]
 
 save(list=workspace.vars, file=paste("speed-test_results-", format(Sys.time(), "%H:%M:%S-%d-%m-%Y"),".Rdata",sep=""))
 
