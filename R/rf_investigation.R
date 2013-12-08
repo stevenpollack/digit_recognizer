@@ -18,11 +18,12 @@ registerDoMC(cores=detectCores())
 ### Breiman suggests looking at m_{try} \in {default, 0.5*default, 2*default}
 ### so keep ntree to default but search without mtry
 mtry.seq <- c(14,28,56)
-par.grid <- expand.grid(training.size=sample.sizes[1:7], mtry=mtry.seq)
+ntree.seq <- c(100,500,1000,1500)
+par.grid <- expand.grid(training.size=sample.sizes, mtry=mtry.seq, ntree=ntree.seq)
 
 RNGkind(kind="L'Ecuyer-CMRG")
-rf.seq <- dlply(.data=par.grid,.variables=.(mtry,training.size),.parallel=T,.fun=function(row){
-  train.time <- system.time(rf.tmp <- randomForest(label~.,data=digit.data[1:row$training.size,], xtest=test.set[,-1], ytest=test.set[,1],norm.votes=F,mtry=row$mtry))
+rf.seq <- dlply(.data=par.grid,.variables=.(mtry,training.size,ntree),.parallel=T,.fun=function(row){
+  train.time <- system.time(rf.tmp <- randomForest(label~.,data=digit.data[1:row$training.size,], xtest=test.set[,-1], ytest=test.set[,1],norm.votes=F,mtry=row$mtry,ntree=row$ntree))
   rf.test.accuracy <- sum(diag(rf.tmp$test$confusion[,1:10]))/dim(test.set)[1]
   list(rf=rf.tmp,accuracy=rf.test.accuracy,train.time=train.time)
 })
@@ -32,22 +33,31 @@ workspace.vars <- ls()[which(!ls() %in% c("digit.data","learning.set","test.set"
 file.name <- paste("rf_investigation-results-", format(Sys.time(), "%H:%M:%S-%d-%m-%Y"),".Rdata",sep="")
 save(list=workspace.vars, file=file.name)
 
-### find most accurate combo (with smallest ntree, if ties)
+### checkout accuracy and timing
 accuracy.seq <- laply(.data=rf.seq, .fun=function(list.obj) {
   matrix(list.obj$accuracy,nrow=1)
 })
 
-optimal.pars <- par.grid[which(accuracy.seq == max(accuracy.seq)),]
-optimal.par <- optimal.pars[which.min(optimal.pars[,2]),]
+timing.seq <- laply(.data=rf.seq, .fun=function(list.obj) {
+  matrix(list.obj$train.time[3],nrow=1)
+})
 
-### visualize grid accuracy
+par.grid.results <- cbind(par.grid,accuracy=as.vector(t(accuracy.seq)),timing=as.vector(t(timing.seq)))
+
+### visualize grid
 library(reshape2)
 library(ggplot2)
 
-plot.title <- substitute(paste("Most accurate estimator when ", n[tree] == opt1, ", ", m[try] == opt2, sep=""),list(opt1=as.numeric(optimal.par[2]),opt2=as.numeric(optimal.par[1])))
+par.grid.heatmap <- ggplot(data=melt(par.grid.results,id.vars=c("training.size","mtry")),aes(y=value,x=as.factor(training.size),color=as.factor(mtry),group=mtry )) + geom_point() + geom_line() + facet_grid(variable~.,scales="free_y") + labs(x="training set size",y="",title=expression(paste("Accuracy and training timing for Random Forest when ", n[tree] == 500, sep=""))) + scale_color_discrete(name=expression(m[try]))
 
-par.grid.heatmap <- ggplot(data=melt(accuracy.seq),aes(y=as.factor(mtry),x=as.factor(ntree),fill=value)) + geom_tile() + labs(x=expression(n[tree]),y=expression(m[try]),title=plot.title)
+# show(par.grid.heatmap)
+
+# rf.seq2 <- llply(.data=c(100,1000,1500),.parallel=T,.fun=function(ntree){
+#   train.time <- system.time(rf.tmp <- randomForest(label~.,data=digit.data[1:10000,], xtest=test.set[,-1], ytest=test.set[,1],norm.votes=F,mtry=14,ntree=ntree))
+#   rf.test.accuracy <- sum(diag(rf.tmp$test$confusion[,1:10]))/dim(test.set)[1]
+#   list(rf=rf.tmp,accuracy=rf.test.accuracy,train.time=train.time)
+# })
 
 # save remainder of workspace
 workspace.vars <- ls()[which(!ls() %in% c("digit.data","learning.set","test.set"))]
-save(list=workspace.vars, file=file.name))
+save(list=workspace.vars, file=file.name)
