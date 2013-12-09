@@ -9,11 +9,14 @@ x.test<-test
 x.learn<-train[,-1]
 y.learn<-train[,1]
 
-out1<-knn(x.learn, x.test[1:10000,], y.learn)
+#To recombine, just concatenate 
+
+out1<-knn(x.learn, x.test[1:10000,], y.learn, k=3)
 save(out1,file="knn1.Rdata")
 
-out2<-knn(x.learn, x.test[10001:20000,],y.learn)
+out2<-knn(x.learn, x.test[10001:20000,],y.learn, k=3)
 save(out2,file="knn2.Rdata")
 
-out3<-knn(x.learn, x.test[20001:28000,], y.learn)
+out3<-knn(x.learn, x.test[20001:28000,], y.learn, k=3)
 save(out3,file="knn3.Rdata")
+
