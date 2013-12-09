@@ -42,13 +42,20 @@ timing.seq <- laply(.data=rf.seq, .fun=function(list.obj) {
   matrix(list.obj$train.time[3],nrow=1)
 })
 
-par.grid.results <- cbind(par.grid,accuracy=as.vector(t(accuracy.seq)),timing=as.vector(t(timing.seq)))
-
-### visualize grid
+library(plyr)
 library(reshape2)
 library(ggplot2)
+library(data.table)
+merged.df <- merge(melt(accuracy.seq,value.name="accuracy"),melt(timing.seq,value.name="time"))
+merged.dt <- data.table(merged.df)
 
-par.grid.heatmap <- ggplot(data=melt(par.grid.results,id.vars=c("training.size","mtry")),aes(y=value,x=as.factor(training.size),color=as.factor(mtry),group=mtry )) + geom_point() + geom_line() + facet_grid(variable~.,scales="free_y") + labs(x="training set size",y="",title=expression(paste("Accuracy and training timing for Random Forest when ", n[tree] == 500, sep=""))) + scale_color_discrete(name=expression(m[try]))
+ntree.vs.mtry.vs.training.size.plot <- ggplot(data=melt(merged.dt,id.vars=c("training.size","mtry","ntree")),aes(group=as.factor(mtry):as.factor(ntree),color=as.factor(mtry))) + geom_line(aes(x=training.size,y=value)) + facet_grid(variable~ntree,scales="free_y") + theme(legend.position="bottom") + labs(x="Training set size", y=NULL,title=expression(paste("Training times and accuracies for various combinations of ", n[tree], " and ", m[try], sep="") )) + scale_color_discrete(name=expression(m[try])) + scale_x_continuous(breaks=10000*(1:4), labels=c("10k", "20k","30k","40k"))
+
+ntree.vs.mtry.vs.training.size.plot.zoomed <- ggplot(data=melt(merged.dt[accuracy>=0.95],id.vars=c("training.size","mtry","ntree")),aes(group=as.factor(mtry):as.factor(ntree),color=as.factor(mtry))) + geom_line(aes(x=training.size,y=value)) + facet_grid(variable~ntree,scales="free_y") + theme(legend.position="bottom") + labs(x="Training set size", y=NULL,title=expression(paste("Training times and accuracies for various combinations of ", n[tree], " and ", m[try], sep="") )) + scale_color_discrete(name=expression(m[try])) + scale_x_continuous(breaks=10000*(1:4), labels=c("10k", "20k","30k","40k"))
+par.grid.results <- cbind(par.grid,accuracy=as.vector(t(accuracy.seq)),timing=as.vector(t(timing.seq)))
+
+
+# par.grid.heatmap <- ggplot(data=melt(par.grid.results,id.vars=c("training.size","mtry")),aes(y=value,x=as.factor(training.size),color=as.factor(mtry),group=mtry )) + geom_point() + geom_line() + facet_grid(variable~.,scales="free_y") + labs(x="training set size",y="",title=expression(paste("Accuracy and training timing for Random Forest when ", n[tree] == 500, sep=""))) + scale_color_discrete(name=expression(m[try]))
 
 # show(par.grid.heatmap)
 
@@ -60,4 +67,4 @@ par.grid.heatmap <- ggplot(data=melt(par.grid.results,id.vars=c("training.size",
 
 # save remainder of workspace
 workspace.vars <- ls()[which(!ls() %in% c("digit.data","learning.set","test.set"))]
-save(list=workspace.vars, file=file.name)
+save(list=workspace.vars, file="rf_investigation-finals.Rdata")
