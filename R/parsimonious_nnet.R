@@ -30,6 +30,10 @@ training.set <- data.table(label=training.set.y, training.set.x) #nnet::class.in
 test.set.x <- RSNNS::normalizeData(digit.dt[41001:42000,selected.pixels,with=F])
 test.set <- data.table(label=digit.data[41001:42000,1], test.set.x)
 
+## prepare kaggle set
+load(file="data_and_benchmarks/testing_data.Rdata")
+kaggle <- data.table(RSNNS::normalizeData(unlabeled.digit.data[,selected.pixels-1]))
+
 ### make grid for .size
 num.of.inputs <- length(selected.pixels)
 num.of.outputs <- 10
@@ -59,6 +63,13 @@ estAccuracy <- function(model,newdata, verbose=F,savePreds=F) {
   return(output)
 }
 
-acc.est <- estAccuracy(caret.avNNet$finalModel,test.set,verbose=T)
+best.nnet <- caret.avNNet$finalModel
+acc.est <- estAccuracy(best.nnet,test.set,verbose=T)
 
 save(tuning.grid, time.avNNet, caret.avNNet, acc.est, file=paste("parsimonious_nnet_results-", format(Sys.time(), "%H:%M:%S-%d-%m-%Y"),".Rdata",sep=""))
+
+### predict kaggle data
+competition.preds <- predict(best.nnet,kaggle,type="class")
+
+write.csv(data.frame(ImageId=1:28000,Label=competition.preds),
+          file="cv-pars_nn_submission.csv",row.names=F,quote=F)
