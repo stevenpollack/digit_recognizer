@@ -1,12 +1,4 @@
 library(data.table)
-<<<<<<< Updated upstream
-library(caret)
-library(plyr)
-library(doMC)
-registerDoMC(cores=detectCores())
-library(nnet)
-=======
->>>>>>> Stashed changes
 library(RSNNS)
 
 ### load data
@@ -60,7 +52,7 @@ kaggle <- data.table(RSNNS::normalizeData(unlabeled.digit.data[,selected.pixels-
 ### calculate RoT for size of hidden layer
 num.of.inputs <- length(selected.pixels)
 num.of.outputs <- 10
-num.of.nodes <- mean(c(num.of.inputs,num.of.outputs))
+num.of.nodes <- 2*(num.of.inputs+num.of.outputs)/3
 
 ### write parallelized benchmarking
 library(doRNG)
@@ -73,11 +65,10 @@ set.seed(1234)
 sample.size.seq <- c(280,480,800,1600,6400,10000,12800,25600,35000,40000)
 benchmark.results <- foreach(i=sample.size.seq,.packages='caret',.inorder=FALSE) %dorng% {
   training.set <- build.training.set(i)
-  summary(training.set)
   train.time <- system.time( subset.avNNet <- avNNet(formula=label~.,
                                                        data=training.set,
                                                        size=num.of.nodes, decay=0.1, softmax=T,MaxNWts=12000,
-                                                       repeats=3,
+                                                       repeats=7,
                                                        bag=F) )
   subset.accuracy.est <- estAccuracy(subset.avNNet,test.set)
   filename <- paste("pars_nn_benchmark_size-",i,".Rdata",sep="")
