@@ -66,38 +66,73 @@ processVote <- function(vote.results) {
   vote.results[,votes:=.N,by=label][votes==max(votes),sample(x=label,size=1)]
 }
 
-test.house <- buildHouse(n.committees=n.committees)
+
+system.time(test.house <- buildHouse(n.committees=n.committees))
 test.committee <- copy(test.house[[1]])
 house.votes <- assembleHouse(house=test.house,citizen=test.citizen)
 results <- processVote(house.votes) 
 
-test.set <- digit.data[, .SD[1],by="label"]
+test.set <- digit.data[, .SD[1], by="label"]
 test.set.response <- test.set[,label]
 
+### take away: apply over t(test.set), then foreach(1:n.committees, .final=rbindlist)
+### is fastest. consider house as a list of dt's with shallow copy:
+### http://stackoverflow.com/questions/17133522/invalid-internal-selfref-in-data-table
+### OR just a subset with labels.
+
+
+
+
+system.time(
 test.set.preds <- llply(.data=1:10,.fun=function(i){
   house.votes <- assembleHouse(house=test.house,citizen=test.set[i,!"label",with=F])
   processVote(house.votes)
 })
+)
 
 digit.data[1:100,list(label)]
 table(unlist(test.set.preds),test.set.response)
 
 library(doParallel)
-registerDoParallel(cores=2)
+registerDoParallel(cores=8)
 
-foreach(committee=iter(test.house,by="cell"),.combine="rbind",.final=data.table) %dopar% {
+test.citizen <- test.set[2,!"label",with=F]
+system.time(foreach(test.citizen=iter(test.set[,!"label",with=F],by="row")) %do% {
+  foreach(committee=iter(test.house,by="cell"),.combine="rbind",.final=data.table) %dopar% {
+    timers <- system.time(result <- assembleCommittee(committee, test.citizen))
+    data.frame(vote=result,time=timers[3])
+  }
+})
+
+system.time(t(digit.data))
+
+system.time(foreach(row=iter(digit.data[1:1000],by="row")) %do% {x<-2})
+system.time(apply(digit.data[1:1000],1,FUN=function(row){x<-2}))
+
+system.time(foreach(row=iter(t(digit.data[1:1000]),by="column")) %do% {x<-2})
+system.time(apply(t(digit.data[1:1000]),2,FUN=function(row){x<-2}))
+
+system.time(foreach(committee=iter(test.house,by="cell"),.combine="rbind",.final=data.table) %dopar% {
   timers <- system.time(result <- assembleCommittee(committee, test.citizen))
   data.frame(vote=result,time=timers[3])
-}
+})
 
-distance2 <- function (x1, x2) {
-  temp <- x1 - x2
-  sum(temp * temp)
-}
+system.time(apply(X=t(test.set[,!"label",with=F]),MARGIN=2,FUN=function(test.citizen) {
+  foreach(i=1:n.committees,.combine=rbind,.final=data.table) %dopar% {
+    committee <- copy(test.house[[i]])
+    timers <- system.time(result <- assembleCommittee(committee, test.citizen))
+    data.frame(vote=result,time=timers[3])
+  }
+}))
 
-x1 <- rnorm(1e06)
-x2 <- rnorm(1e06)
+microbenchmark( o1<- foreach(i=1:n.committees,.combine=rbind,.final=data.table) %dopar% {
+  committee <- copy(test.house[[i]])
+  timers <- system.time(result <- assembleCommittee(committee, test.citizen))
+  data.frame(vote=result,time=timers[3])
+},  o2 <- foreach(i=1:n.committees,.final=data.table::rbindlist) %dopar% {
+  committee <- copy(test.house[[i]])
+  timers <- system.time(result <- assembleCommittee(committee, test.citizen))
+  data.table(vote=result,time=timers[3])
+}, times=10)
+### apply over columns is still fastest
 
-system.time(for (i in 1:100) distance2(x1, x2))
-system.time(for (i in 1:100) t2 <- crossprod(x1 - x2))
-system.time(for (i in 1:100) sqEucDist(x1,x2))
