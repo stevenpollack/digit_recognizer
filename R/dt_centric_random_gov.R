@@ -8,14 +8,18 @@ if (!"digit.data" %in% ls()) {
 }
 # key on label
 setkey(x=digit.data,label)
+pixel.cols <- colnames(digit.data)[which(!colnames(digit.data) %in% c("label"))]
 
 n.committees <- 100
 
 ### build house within DT framework
 set.seed(1234)
-rand.rows <- sample(x=1:3200,size=100,replace=F)
-test.set <- digit.data[rand.rows,!"label",with=F]
-test.set.response <- digit.data[rand.rows,label]
+rand.rows <- sample(x=1:3200,size=10,replace=F)
+
+test.set <- digit.data[,.SD[rand.rows],by=label]
+test.set.response <- test.set[,label]
+test.set[,label:=NULL]
+
 system.time(random.house <- digit.data[,.SD[sample(x=.N, size=n.committees)],by=label][,`:=`(committee.num=1:n.committees,metascore=0)])
 
 ### key random.house by committee number
@@ -32,12 +36,11 @@ committeePredict.old <- function(random.house, committee.number, test.citizen) {
 
 pixel.cols <- colnames(random.house)[which(!colnames(random.house) %in% c("label","metascore","committee.num"))]
 
-random.house[J(1), pixel.cols, with=F]
 committeePredict <- function(random.house, committee.number, test.citizen) {
   ### from ?dist, accessing distance from test.citizen to committee.member.k
-  ### is from dist()[n*(i-1)-i*(i-1)/2 + j-i] where n = 11, i = 11, j = k
+  ### is from dist()[(i-1)*(n-i/2) + j-i] where n = 11, i = k, j = 11
   distances <- dist(rbind(random.house[J(committee.number),pixel.cols,with=F],test.citizen))
-  distances <- distances[11*10 - 11*10/2 + (1:10) - 11]
+  distances <- distances[(1:10-1)*(11-1:10/2) + 11-(1:10)]
   as.factor(0:9)[which.min(distances)]
 }
 ### look into modifying train to simultaneously gauge vanilla accuracy.
@@ -79,7 +82,12 @@ trainRandomHouse <- function(training.set.input, training.set.response, random.h
 }
 
 system.time(out <- trainRandomHouse(test.set,test.set.response,random.house))
-table(unlist(out),test.set.response)
+confusion.mat <- table(ordered(unlist(out),0:9),test.set.response)
+accuracy.est <- sum(diag(confusion.mat))/length(test.set.response); accuracy.est
+
+
+
+### 15 minutes to train on 1k subjects, with 87.3% vanilla voting accuracy
 
 
 ### train meta-score
