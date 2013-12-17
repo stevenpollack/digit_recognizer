@@ -1,4 +1,6 @@
 library(data.table)
+library(doParallel)
+registerDoParallel(cores=detectCores())
 
 ### load data
 if (!"digit.data" %in% ls()) {
@@ -7,11 +9,11 @@ if (!"digit.data" %in% ls()) {
 # key on label
 setkey(x=digit.data,label)
 
-n.committees <- 7
+n.committees <- 100
 
 ### build house within DT framework
 set.seed(1234)
-rand.rows <- sample(x=1:3200,size=5,replace=F)
+rand.rows <- sample(x=1:3200,size=100,replace=F)
 test.set <- digit.data[rand.rows,!"label",with=F]
 test.set.response <- digit.data[rand.rows,label]
 system.time(random.house <- digit.data[,.SD[sample(x=.N, size=n.committees)],by=label][,`:=`(committee.num=1:n.committees,metascore=0)])
@@ -20,40 +22,64 @@ system.time(random.house <- digit.data[,.SD[sample(x=.N, size=n.committees)],by=
 ### so we can loop through DT in parallel
 setkey(random.house,committee.num)
 
-committeePredict <- function(random.house, committee.number, test.citizen) {
+sqEucDist <- function(x,y) { sum((x-y)^2) }
+
+committeePredict.old <- function(random.house, committee.number, test.citizen) {
   random.house[J(committee.number),
                sqEucDist(.SD[,!"metascore",with=F][,!"committee.num",with=F],test.citizen)
                ,by=label][,label[which.min(V1)]]
 }
+
+pixel.cols <- colnames(random.house)[which(!colnames(random.house) %in% c("label","metascore","committee.num"))]
+
+random.house[J(1), pixel.cols, with=F]
+committeePredict <- function(random.house, committee.number, test.citizen) {
+  ### from ?dist, accessing distance from test.citizen to committee.member.k
+  ### is from dist()[n*(i-1)-i*(i-1)/2 + j-i] where n = 11, i = 11, j = k
+  distances <- dist(rbind(random.house[J(committee.number),pixel.cols,with=F],test.citizen))
+  distances <- distances[11*10 - 11*10/2 + (1:10) - 11]
+  as.factor(0:9)[which.min(distances)]
+}
+### look into modifying train to simultaneously gauge vanilla accuracy.
 
 trainRandomHouse <- function(training.set.input, training.set.response, random.house) {
   ### assuming trainingset has structure == obs x covariates
   ### and that training.set.respose[i] = class(training.set.input[i])
   size.of.training.set <- length(training.set.response)
   training.set.input.t <- t(training.set.input) # to speed up apply()
-  .ignore <- lapply(X=1:size.of.training.set,FUN=function(i) {
+  predicted.values <- lapply(X=1:size.of.training.set,FUN=function(i) {
     
     test.citizen <- training.set.input[i]
     test.citizen.class <- training.set.response[i]
     
     # do parallel committee classification and metascore calculation
-    metascore.update <- foreach(committee.number=1:n.committees,.final=unlist) %dopar% {
+    class.and.score <- foreach(committee.number=1:n.committees) %dopar% {
       predicted.class <- committeePredict(random.house, committee.number, test.citizen)
       ### update metascore if prediction is good.
-      if (predicted.class == test.citizen.class) {
+      score.update <- if (predicted.class == test.citizen.class) {
         rep(1,10)
         } else {
           rep(0,10)
         }
+      return(list(predicted.class=predicted.class,score=score.update))
     }
+    # unpack results
+    metascore.update <- unlist(lapply(class.and.score,function(list){list$score}))
+    class.votes <- rbindlist(lapply(class.and.score,function(list){data.table(predicted.class=list$predicted.class)}))
+    
+    # update random.house's metascore
     random.house[,metascore:=metascore+metascore.update]
+    
+    # determine a winner 
+    winner <- class.votes[,.N,keyby=predicted.class][N==max(N),sample(predicted.class,1)][]
+    
+    return(winner)
   })
+  return(predicted.values)
 }
 
-
-random.house[,metascore:=0]
-trainRandomHouse(test.set,test.set.response,random.house)
-
+system.time(out <- trainRandomHouse(test.set,test.set.response,random.house))
+table(unlist(out),test.set.response)
 
 
 ### train meta-score
