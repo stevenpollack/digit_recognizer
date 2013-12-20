@@ -15,10 +15,13 @@ if (!"digit.data" %in% ls()) {
       ### condition data
       rownames(digit.data) <- paste("image",1:42000,sep="")
       digit.data[,1] <- as.factor(digit.data[,1])
-      
+
       ### cast as data.table
       digit.data <- data.table(digit.data)
       
+      # key on label
+      setkey(x=digit.data,label)
+
       ### save digit.data into .Rdata file
       save(digit.data, file="data_and_benchmarks/training_data.Rdata")
     } else {
