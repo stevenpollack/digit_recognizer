@@ -53,7 +53,7 @@ training.set[,label:=NULL]
 buildRandomGov <- function(building.set, num.of.committees=10, class.width=1) {
   setkey(building.set,label)
   ### build random gov then store committees in a list
-  committees.dt <- building.set[,.SD[sample(x=.N, size=class.width*num.of.committees)],by=label][,`:=`(committee.num=rep(1:num.of.committees,class.width))]
+  committees.dt <- building.set[,.SD[sample(x=.N, size=class.width*num.of.committees,replace=TRUE)],by=label][,`:=`(committee.num=rep(1:num.of.committees,class.width))]
   setkey(committees.dt,committee.num)
   
   ### store random.committees in a list: ( ~ 252 ms)
@@ -121,7 +121,7 @@ trainRandomGov <- function(random.gov,training.set,training.set.response,method=
   ### times a committee had the right member closest to a training example.
   ### probability method scales the above count to yield an in-class accuracy
   ### estimate.
-  
+  method <- match.arg(method, c("vanilla", "synthetic", "probabilistic"))
   ### use kNN to block-train random.government metascores (~ 126ms)
   metascores <- if (method=="synthetic") {
     lapply(X=random.gov,FUN=function(rg.com){
@@ -129,7 +129,7 @@ trainRandomGov <- function(random.gov,training.set,training.set.response,method=
                          test=training.set,cl=rg.com$labels,k=1)
       table(predictions[predictions == training.set.response])
     }) 
-  } else if (method=="prob") {
+  } else if (method=="probabilistic") {
     lapply(X=random.gov, FUN=function(rg.com){
       predictions <- knn(train=rg.com$committee,
                          test=training.set,cl=rg.com$labels,k=1)
@@ -185,6 +185,7 @@ probMetaScoreWinner <- function(predictions,random.gov) {
 }
 
 processElections <- function(predictions.mat, random.gov, method="vanilla"){
+  # no need to double check method, as this function is called from predict...
   out <- if (method=="vanilla") {
     apply(X=predictions.mat,MARGIN=2,FUN=vanillaWinner) 
   } else if (method=="synthetic") {
@@ -201,10 +202,32 @@ processElections <- function(predictions.mat, random.gov, method="vanilla"){
 ### prediction
 ### --------------
 
-predictRandomGov <- function(random.gov,test.set,method="vanilla") {
+makeBinary <- function(data) {
+  ### turns a vector/matrix into into a binary string/matrix
+  ### via transform: ceiling( (data-min)/max )
+  range.of.data <- range(data)
+  ceiling( (data-range.of.data[1])/range.of.data[2] )
+}
+
+predictRandomGov <- function(random.gov,test.set,method="vanilla",dist="euclidean") {
+  method <- match.arg(method, c("vanilla", "synthetic", "probabilistic"))
+  dist <- match.arg(dist, c("euclidean","binary"))
   ### use kNN to block process test set and aggregate predictions
+  if (dist == "binary") {
+    test.set <- makeBinary(test.set)
+  }
   predictions <- lapply(X=random.gov,
-                        FUN=function(rg.com) {knn(train=rg.com$committee,test=test.set,cl=rg.com$labels,k=1)}) 
+                        FUN=function(rg.com) {
+                          if (dist == "binary") {
+                            training.set <- makeBinary(rg.com$committee)
+                          } else {
+                            training.set <- rg.com$committee
+                          }
+                          knn(train=training.set,
+                              test=test.set,
+                              cl=rg.com$labels,
+                              k=1)
+                          }) 
   ### process results into matrix
   predictions.mat <- matrix(unlist(predictions),nrow=length(random.gov),byrow=T)
   ### process elections
