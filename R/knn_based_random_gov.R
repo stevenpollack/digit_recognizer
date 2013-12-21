@@ -133,7 +133,7 @@ probMetaScoreWinner <- function(predictions,random.gov) {
                               predicted.class <- predictions[committee.num]
                               random.gov[[committee.num]]$metascore[predicted.class]
                             })
-  return(predictions[which.max(candidate.certainties)])
+  return(sample(predictions,size=1,prob=candidate.certainties))
 }
 
 processElections <- function(predictions.mat, random.gov, method="vanilla"){
