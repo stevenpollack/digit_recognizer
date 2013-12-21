@@ -22,9 +22,10 @@ pixel.cols <- colnames(digit.data)[which(!colnames(digit.data) %in% c("label"))]
 ### Thus, make sure your subset is at easily bigger than 1k + 10*n + 30.
 
 set.seed(1234)
-num.of.committees <- 100
+#num.of.committees <- 100
 
-subset.size <-10000 # should be greater than 1000
+### split subset up into 1/3's: test, train, build.
+subset.size <-3000 # should be greater than 1000
 subset.indices <- sample(seq.int(nrow(digit.data)), subset.size, replace=F)
 digit.subset <- digit.data[subset.indices]
 setkey(digit.subset,label)
@@ -34,7 +35,7 @@ test.set <- digit.subset[test.set.indices]
 training.set <- digit.subset[-test.set.indices]
 
 ### separate building set from within training sets.
-building.set.indices <- training.set[,sample(x={.I[1]:.I[.N]},size=num.of.committees,replace=F),by=label][,V1]
+building.set.indices <- training.set[,sample(x={.I[1]:.I[.N]},size=100,replace=F),by=label][,V1]
 building.set <- training.set[building.set.indices]
 training.set <- training.set[-building.set.indices]
 
@@ -49,22 +50,23 @@ training.set[,label:=NULL]
 ### build routines
 ### --------------
 
-buildRandomGov <- function(num.of.committees, digit.data) {
-  setkey(digit.data,label)
+buildRandomGov <- function(building.set, num.of.committees=10, class.width=1) {
+  setkey(building.set,label)
   ### build random gov then store committees in a list
-  random.house <- digit.data[,.SD[sample(x=.N, size=num.of.committees)],by=label][,`:=`(committee.num=1:num.of.committees)]
-  setkey(random.house,committee.num)
+  committees.dt <- building.set[,.SD[sample(x=.N, size=class.width*num.of.committees)],by=label][,`:=`(committee.num=rep(1:num.of.committees,class.width))]
+  setkey(committees.dt,committee.num)
   
   ### store random.committees in a list: ( ~ 252 ms)
   random.gov <- lapply(X=1:num.of.committees, FUN=function(i) {
-    list(committee=as.matrix(random.house[J(i),pixel.cols,with=F]),labels=random.house[J(i),"label",with=F][,label])
+    list(committee=as.matrix(committees.dt[J(i),pixel.cols,with=F]),labels=committees.dt[J(i),"label",with=F][,label])
   })
   return(random.gov)
 }
 
-selectivelyBuildRandomGov <- function(building.set,training.set,training.set.response,iter.limit=100,threshold=0.92,verbose=FALSE) {
+selectivelyBuildRandomGov <- function(building.set, training.set, training.set.response, class.width=1, iter.limit=100, threshold=0.92, verbose=FALSE) {
   ### consider growing a committee for the specialized purpose
-  ### of classifying label k
+  ### of classifying label k, but allow the committee to have 
+  ### multiple members from classes.
   require(doRNG) # allow for reproducible foreach loop
   set.seed(1234)
   build.time <- system.time(committee.search.results <- foreach(class=as.factor(0:9)) %dorng% {
@@ -73,7 +75,7 @@ selectivelyBuildRandomGov <- function(building.set,training.set,training.set.res
     iter <- 0
     best.committee <- list(likelihood=0)
     while (iter < iter.limit) {
-      potential.committee <- building.set[,.SD[sample(x=.N, size=1)],by=label]
+      potential.committee <- building.set[,.SD[sample(x=.N, size=class.width)],by=label]
       potential.committee.input <- potential.committee[,!"label",with=FALSE]
       potential.committee.response <- potential.committee[,label]
       predictions <- knn(train=potential.committee.input,
@@ -228,13 +230,27 @@ buildTrainPredict <- function(num.of.committees, building.set, training.set, tra
   list(predictions=predictions, performance=performance, randomGov=random.gov)
 }
 
-selectiveBuildTrainPredict <- function(building.set, training.set, training.set.response, test.set, test.set.response, iter.limit=25, threshold=0.92, method="prob") {
-  random.gov <- selectivelyBuildRandomGov(building.set, training.set, training.set.response, iter.limit, threshold, verbose=T)
+selectiveBuildTrainPredict <- function(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=25, threshold=0.92, method="prob") {
+  random.gov <- selectivelyBuildRandomGov(building.set, training.set, training.set.response, class.width, iter.limit, threshold, verbose=T)
  buildRandomGov(num.of.committees,building.set)
   predictions <- predictRandomGov(random.gov,test.set,method=method)
   performance <- estimatePerformance(predictions,test.set.response)
   list(predictions=predictions, performance=performance, randomGov=random.gov)
 }
+
+buildRandomGov(building.set)
+
+# 
+# out <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=50, threshold=0.92, method="prob") 
+# 
+# out2 <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=50, threshold=0.92, method="vanilla") 
+# 
+# out3 <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=3, iter.limit=15, threshold=0.92, method="prob") 
+# 
+# out4 <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=45, iter.limit=1, threshold=0.92, method="vanilla") ; out4$performance
+
+### accuracy is affected by posterior probabilities and class.width
+
 
 # timing <- microbenchmark(out <- buildTrainPredict(num.of.committees,building.set,training.set,training.set.response,test.set,test.set.response,method="prob"),times=1)
 
