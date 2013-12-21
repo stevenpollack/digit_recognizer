@@ -45,6 +45,9 @@ test.set[,label:=NULL]
 training.set.response <- training.set[,label]
 training.set[,label:=NULL]
 
+### --------------
+### build routines
+### --------------
 
 buildRandomGov <- function(num.of.committees, digit.data) {
   setkey(digit.data,label)
@@ -107,18 +110,9 @@ selectivelyBuildRandomGov <- function(building.set,training.set,training.set.res
   return(random.gov)
 }
 
-
-### benchmark a few strategies
-################
-# ### ~ 122 ms
-# microbenchmark(out1 <- matrix(unlist(lapply(X=random.gov, FUN=function(rg.com) {knn(train=rg.com$committee,test=test.set,cl=rg.com$labels,k=1)})),nrow=10,byrow=T),times=10)
-# 
-# ### ~ 129 ms
-# microbenchmark(out2 <- matrix(foreach(rg.com=iter(random.gov),.final=unlist) %do% {(knn(train=rg.com$committee,test=test.set,cl=rg.com$labels,k=1))},nrow=10,byrow=T),times=10)
-# 
-# ### ~ 131 ms
-# microbenchmark(out3 <- matrix(foreach(i=seq.int(num.of.committees),.final=unlist) %do% {knn(train=random.gov[[i]]$committee,test=test.set,cl=random.gov[[i]]$labels,k=1)},nrow=10,byrow=T),times=10)
-# ##############
+### ---------------
+### training routines
+### ---------------
 
 trainRandomGov <- function(random.gov,training.set,training.set.response,method="prob") {
   ### synthetic method articially inflates counts according to how many
@@ -151,8 +145,9 @@ trainRandomGov <- function(random.gov,training.set,training.set.response,method=
   return(random.gov)  
 }
 
-### help functions for predict functionality
-########
+### --------------
+### election routines
+### --------------
 
 vanillaWinner <- function(predictions) {
   vote.table <- table(predictions)
@@ -194,19 +189,29 @@ processElections <- function(predictions.mat, random.gov, method="vanilla"){
     apply(X=predictions.mat,MARGIN=2,FUN=function(committee.predictions,random.gov){syntheticMetascoreWinner(committee.predictions,random.gov)},random.gov)
   } else if (method=="prob") {
     apply(X=predictions.mat,MARGIN=2,FUN=function(committee.predictions,random.gov){probMetaScoreWinner(committee.predictions,random.gov)},random.gov)
+  } else {
+    stop("invalid method")
   }
   return(out)
 }
-########
+
+### --------------
+### prediction
+### --------------
 
 predictRandomGov <- function(random.gov,test.set,method="vanilla") {
   ### use kNN to block process test set and aggregate predictions
-  predictions <- lapply(X=random.gov, FUN=function(rg.com) {knn(train=rg.com$committee,test=test.set,cl=rg.com$labels,k=1)}) 
+  predictions <- lapply(X=random.gov,
+                        FUN=function(rg.com) {knn(train=rg.com$committee,test=test.set,cl=rg.com$labels,k=1)}) 
   ### process results into matrix
   predictions.mat <- matrix(unlist(predictions),nrow=length(random.gov),byrow=T)
   ### process elections
   return(processElections(predictions.mat,random.gov,method))
 }
+
+### --------------
+### benchmarking
+### --------------
 
 estimatePerformance <- function(predicted.classes,actual.classes) {
   conf.mat <- table(predicted.classes,actual.classes)
@@ -215,7 +220,7 @@ estimatePerformance <- function(predicted.classes,actual.classes) {
 }
 
 ### ~ 9.65 s for 10 committees, 3.9k obs training set and 1k test set
-buildTrainPredict <- function(num.of.committees,building.set,training.set,training.set.response,test.set,test.set.response,method="vanilla") {
+buildTrainPredict <- function(num.of.committees, building.set, training.set, training.set.response, test.set, test.set.response, method="vanilla") {
   random.gov <- buildRandomGov(num.of.committees,building.set)
   random.gov <- trainRandomGov(random.gov,training.set,training.set.response,method=method)
   predictions <- predictRandomGov(random.gov,test.set,method=method)
@@ -223,48 +228,54 @@ buildTrainPredict <- function(num.of.committees,building.set,training.set,traini
   list(predictions=predictions, performance=performance, randomGov=random.gov)
 }
 
-timing <- microbenchmark(out <- buildTrainPredict(num.of.committees,building.set,training.set,training.set.response,test.set,test.set.response,method="prob"),times=1)
-
-print(timing) # ~148s for 1k building set, 1k test, 8k train, 100 committees
-print(out$performance) # 46.1%
-metascore.dt <- data.table(matrix(unlist(lapply(X=out$randomGov,FUN=function(list){list$metascore})),byrow=T,ncol=10))
-best.committees.dt <- rbindlist(lapply(metascore.dt,function(col){data.table(max=max(col),row=which.max(col))}))
-
-pruned.random.gov <- out$randomGov[best.committees.dt[,row]]
-pruned.predictions <- predictRandomGov(pruned.random.gov,test.set,method=method)
-pruned.performance <- estimatePerformance(pruned.predictions,test.set.response) # 46.6%.
-
-
-out <- selectivelyBuildRandomGov(building.set,training.set,training.set.response,15,0.92,TRUE)
-
-.ignore <- foreach(x=seq.int(100)) %dopar% {
-  if (x %% 25 == 0) cat(x)
-  NULL
+selectiveBuildTrainPredict <- function(building.set, training.set, training.set.response, test.set, test.set.response, iter.limit=25, threshold=0.92, method="prob") {
+  random.gov <- selectivelyBuildRandomGov(building.set, training.set, training.set.response, iter.limit, threshold, verbose=T)
+ buildRandomGov(num.of.committees,building.set)
+  predictions <- predictRandomGov(random.gov,test.set,method=method)
+  performance <- estimatePerformance(predictions,test.set.response)
+  list(predictions=predictions, performance=performance, randomGov=random.gov)
 }
 
+# timing <- microbenchmark(out <- buildTrainPredict(num.of.committees,building.set,training.set,training.set.response,test.set,test.set.response,method="prob"),times=1)
+
+done <- FALSE
+if (done) {
+  print(timing) # ~148s for 1k building set, 1k test, 8k train, 100 committees
+  print(out$performance) # 46.1%
+  metascore.dt <- data.table(matrix(unlist(lapply(X=out$randomGov,FUN=function(list){list$metascore})),byrow=T,ncol=10))
+  best.committees.dt <- rbindlist(lapply(metascore.dt,function(col){data.table(max=max(col),row=which.max(col))}))
+  
+  pruned.random.gov <- out$randomGov[best.committees.dt[,row]]
+  pruned.predictions <- predictRandomGov(pruned.random.gov,test.set,method=method)
+  pruned.performance <- estimatePerformance(pruned.predictions,test.set.response) # 46.6%.
+  
+  
+  out <- selectivelyBuildRandomGov(building.set,training.set,training.set.response,15,0.92,TRUE)
+  
+}
 
 ### sequential version that doesn't waste data:
-is.trained <- rep(FALSE,10)
-names(is.trained) <- as.factor(0:9)
-iter <- 0
-garbage <- vector("list",10)
-while (iter < 100) {
-  potential.committee <- building.set[,.SD[sample(x=.N, size=1)],by=label]
-  potential.committee.input <- potential.committee[,!"label",with=FALSE]
-  potential.committee.response <- potential.committee[,label]
-  predictions <- knn(train=potential.committee.input,
-                     test=training.set,
-                     cl=potential.committee.response,k=1)
-  counts <- table(predictions[predictions == training.set.response])
-  proportions <- counts / table(predictions)
-  
-  if (any( (proportions > 0.92) & !is.trained )) {
-      label.to.be.trained <- which.max((proportions > 0.92) & !is.trained)
-      garbage[[label.to.be.trained]] <- potential.committee
-      is.trained[label.to.be.trained] <- TRUE
-  }
-  iter <- iter+1
-}
+# is.trained <- rep(FALSE,10)
+# names(is.trained) <- as.factor(0:9)
+# iter <- 0
+# garbage <- vector("list",10)
+# while (iter < 100) {
+#   potential.committee <- building.set[,.SD[sample(x=.N, size=1)],by=label]
+#   potential.committee.input <- potential.committee[,!"label",with=FALSE]
+#   potential.committee.response <- potential.committee[,label]
+#   predictions <- knn(train=potential.committee.input,
+#                      test=training.set,
+#                      cl=potential.committee.response,k=1)
+#   counts <- table(predictions[predictions == training.set.response])
+#   proportions <- counts / table(predictions)
+#   
+#   if (any( (proportions > 0.92) & !is.trained )) {
+#       label.to.be.trained <- which.max((proportions > 0.92) & !is.trained)
+#       garbage[[label.to.be.trained]] <- potential.committee
+#       is.trained[label.to.be.trained] <- TRUE
+#   }
+#   iter <- iter+1
+# }
 
 
 # ### reference ~ 252.5 s
