@@ -25,12 +25,12 @@ set.seed(1234)
 #num.of.committees <- 100
 
 ### split subset up into 1/3's: test, train, build.
-subset.size <-3000 # should be greater than 1000
+subset.size <-5000 # should be greater than 1000
 subset.indices <- sample(seq.int(nrow(digit.data)), subset.size, replace=F)
 digit.subset <- digit.data[subset.indices]
 setkey(digit.subset,label)
 
-test.set.indices <- sample(seq.int(subset.size),1000,replace=F)
+test.set.indices <- sample(seq.int(subset.size),2000,replace=F)
 test.set <- digit.subset[test.set.indices]
 training.set <- digit.subset[-test.set.indices]
 
@@ -211,25 +211,36 @@ makeBinary <- function(data) {
   ceiling( (data-range.of.data[1])/range.of.data[2] )
 }
 
-predictRandomGov <- function(random.gov,test.set,method="vanilla",dist="euclidean") {
+predictRandomGov <- function(random.gov,test.set,method="vanilla",dist="euclidean",parallel=FALSE) {
+  ### check arguments in signature
   method <- match.arg(method, c("vanilla", "synthetic", "probabilistic"))
   dist <- match.arg(dist, c("euclidean","binary"))
+  
   ### use kNN to block process test set and aggregate predictions
-  if (dist == "binary") {
-    test.set <- makeBinary(test.set)
+  predictCommittee <- function(committee, test.set, labels, dist) {
+    training.set <- if (dist == "binary") {
+      makeBinary(committee)
+    } else {
+      committee
+    }
+    knn(train=training.set,test=test.set,cl=labels,k=1)
   }
-  predictions <- lapply(X=random.gov,
-                        FUN=function(rg.com) {
-                          if (dist == "binary") {
-                            training.set <- makeBinary(rg.com$committee)
-                          } else {
-                            training.set <- rg.com$committee
-                          }
-                          knn(train=training.set,
-                              test=test.set,
-                              cl=rg.com$labels,
-                              k=1)
-                          }) 
+  
+  if (dist == "binary") {test.set <- makeBinary(test.set)}
+  
+  predictions <- if (parallel) {
+    foreach(committee.obj=iter(random.gov)) %dopar% {
+      training.set <- committee.obj$committee
+      labels <- committee.obj$labels
+      predictCommittee(training.set, test.set, labels, dist) 
+    }
+      
+  } else {
+    lapply(X=random.gov,FUN=function(committee.obj, test.set, dist){
+      predictCommittee(committee.obj$committee, test.set, committee.obj$labels, dist) 
+      }, test.set, dist) 
+  }
+  
   ### process results into matrix
   predictions.mat <- matrix(unlist(predictions),nrow=length(random.gov),byrow=T)
   ### process elections
@@ -247,7 +258,7 @@ estimatePerformance <- function(predicted.classes,actual.classes) {
 }
 
 ### ~ 9.65 s for 10 committees, 3.9k obs training set and 1k test set
-buildTrainPredict <- function(building.set, training.set, training.set.response, test.set, test.set.response, build.type="generic", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=25, threshold=0.92) {
+buildTrainPredict <- function(building.set, training.set, training.set.response, test.set, test.set.response, build.type="generic", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=25, threshold=0.92,parallel=FALSE) {
   build.type <- match.arg(build.type, c("generic", "selective"))
   
   if (build.type == "generic") {
@@ -256,13 +267,12 @@ buildTrainPredict <- function(building.set, training.set, training.set.response,
   } else if (build.type == "selective") {
     random.gov <- selectivelyBuildRandomGov(building.set, training.set, training.set.response, class.width, iter.limit, threshold, verbose=T)
   }
-  predictions <- predictRandomGov(random.gov,test.set,method,dist)
+  predictions <- predictRandomGov(random.gov,test.set,method,dist,parallel)
   performance <- estimatePerformance(predictions,test.set.response)
   list(predictions=predictions, performance=performance, randomGov=random.gov)
 }
 
-out <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8)
-
+microbenchmark(out1 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=TRUE), out2 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=FALSE),times=5)
 
 # 
 # out <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=50, threshold=0.92, method="prob") 
