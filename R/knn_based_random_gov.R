@@ -137,10 +137,12 @@ trainRandomGov <- function(random.gov,training.set,training.set.response,method=
       proportions <- counts / table(predictions)
       return(proportions) # which.max will ignore NaN's from 0/0
     })
+  } else if (method=="vanilla") {
+    vector("list",length(random.gov))
   }
    
   ### store metascore table back inside random.gov (~ 1.29 ms)
-  random.gov <- lapply(X=1:num.of.committees,FUN=function(i){
+  random.gov <- lapply(X=1:length(random.gov),FUN=function(i){
     random.gov[[i]]$metascore <- metascores[[i]]
     random.gov[[i]]
   })
@@ -245,23 +247,22 @@ estimatePerformance <- function(predicted.classes,actual.classes) {
 }
 
 ### ~ 9.65 s for 10 committees, 3.9k obs training set and 1k test set
-buildTrainPredict <- function(num.of.committees, building.set, training.set, training.set.response, test.set, test.set.response, method="vanilla") {
-  random.gov <- buildRandomGov(num.of.committees,building.set)
-  random.gov <- trainRandomGov(random.gov,training.set,training.set.response,method=method)
-  predictions <- predictRandomGov(random.gov,test.set,method=method)
+buildTrainPredict <- function(building.set, training.set, training.set.response, test.set, test.set.response, build.type="generic", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=25, threshold=0.92) {
+  build.type <- match.arg(build.type, c("generic", "selective"))
+  
+  if (build.type == "generic") {
+    random.gov <- buildRandomGov(building.set,num.of.committees,class.width)
+    random.gov <- trainRandomGov(random.gov,training.set,training.set.response,method=method)
+  } else if (build.type == "selective") {
+    random.gov <- selectivelyBuildRandomGov(building.set, training.set, training.set.response, class.width, iter.limit, threshold, verbose=T)
+  }
+  predictions <- predictRandomGov(random.gov,test.set,method,dist)
   performance <- estimatePerformance(predictions,test.set.response)
   list(predictions=predictions, performance=performance, randomGov=random.gov)
 }
 
-selectiveBuildTrainPredict <- function(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=25, threshold=0.92, method="prob") {
-  random.gov <- selectivelyBuildRandomGov(building.set, training.set, training.set.response, class.width, iter.limit, threshold, verbose=T)
- buildRandomGov(num.of.committees,building.set)
-  predictions <- predictRandomGov(random.gov,test.set,method=method)
-  performance <- estimatePerformance(predictions,test.set.response)
-  list(predictions=predictions, performance=performance, randomGov=random.gov)
-}
+out <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8)
 
-buildRandomGov(building.set)
 
 # 
 # out <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=50, threshold=0.92, method="prob") 
