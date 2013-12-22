@@ -5,52 +5,12 @@ library(class)
 library(doParallel)
 registerDoParallel(cores=detectCores())
 
-### load data
-if (!"digit.data" %in% ls()) {
-  source(file="R/load_data.R")
-}
-
-pixel.cols <- colnames(digit.data)[which(!colnames(digit.data) %in% c("label"))]
-
-### subset original data and randomly split up subset into test and train and building subsets
-
-### note: for n committees, you need a building set of size at least 10*n.
-### so that you can have 10 distinct classes per committee.
-### You also want to have a test set of size >= 1k for decent 
-### estimation of accuracy. If you want to train, you should also try and
-### make a subset that has at least 3 samples from every class.
-### Thus, make sure your subset is at easily bigger than 1k + 10*n + 30.
-
-set.seed(1234)
-#num.of.committees <- 100
-
-### split subset up into 1/3's: test, train, build.
-subset.size <-5000 # should be greater than 1000
-subset.indices <- sample(seq.int(nrow(digit.data)), subset.size, replace=F)
-digit.subset <- digit.data[subset.indices]
-setkey(digit.subset,label)
-
-test.set.indices <- sample(seq.int(subset.size),2000,replace=F)
-test.set <- digit.subset[test.set.indices]
-training.set <- digit.subset[-test.set.indices]
-
-### separate building set from within training sets.
-building.set.indices <- training.set[,sample(x={.I[1]:.I[.N]},size=100,replace=F),by=label][,V1]
-building.set <- training.set[building.set.indices]
-training.set <- training.set[-building.set.indices]
-
-### separate test and training set input and response
-test.set.response <- test.set[,label]
-test.set[,label:=NULL]
-
-training.set.response <- training.set[,label]
-training.set[,label:=NULL]
-
 ### --------------
 ### build routines
 ### --------------
 
-buildRandomGov <- function(building.set, num.of.committees=10, class.width=1) {
+buildRandomGov <- function(building.set, pixel.cols, num.of.committees=10, class.width=1) {
+  set.seed(1234) # for reproducibility
   setkey(building.set,label)
   ### build random gov then store committees in a list
   committees.dt <- building.set[,.SD[sample(x=.N, size=class.width*num.of.committees,replace=TRUE)],by=label][,`:=`(committee.num=rep(1:num.of.committees,class.width))]
@@ -154,6 +114,7 @@ trainRandomGov <- function(random.gov,training.set,training.set.response,method=
 ### --------------
 
 vanillaWinner <- function(predictions) {
+  set.seed(1234) # for reproducibility
   vote.table <- table(predictions)
   candidates <- dimnames(vote.table)$predictions
   winners <- candidates[which(vote.table == max(vote.table))]
@@ -177,6 +138,8 @@ syntheticMetascoreWinner <- function(predictions,random.gov) {
 
 ### choose winner based on highest likelihood
 probMetaScoreWinner <- function(predictions,random.gov) {
+  set.seed(1234) # for reproducibility
+  
   ### random.gov[[i]]$committee's vote == committee.predictions[i]
   candidate.certainties <- sapply(X=seq.int(length(predictions)),
                             FUN=function(committee.num){
@@ -272,7 +235,77 @@ buildTrainPredict <- function(building.set, training.set, training.set.response,
   list(predictions=predictions, performance=performance, randomGov=random.gov)
 }
 
-microbenchmark(out1 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=TRUE), out2 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=FALSE),times=5)
+### ----------
+### cross validation routines (for vanilla prediction)
+### ---------
+
+### vanilla prediction doesn't require a training set.
+### so, consider an arbitrary subset of digit.data
+
+### load data
+if (!"digit.data" %in% ls()) {
+  source(file="R/load_data.R")
+}
+
+assessVanillaPerformance <- function(num.of.committees, class.width, full.data.dt, test.set.size, parallel=FALSE) {
+  
+  pixel.cols <- colnames(full.data.dt)[which(!colnames(full.data.dt) %in% c("label"))]
+  
+  ### randomly divide whole data into "test" and "training" sets
+  test.set.indices <- sample(seq.int(nrow(full.data.dt)), test.set.size, replace=F)
+  test.set <- full.data.dt[test.set.indices]
+  
+  ### separate input and response
+  test.set.response <- test.set[,label]
+  test.set[,label:=NULL]
+  
+  ### make training set -- no need to separate input and response
+  training.set <- full.data.dt[-test.set.indices]
+  setkey(training.set,label)
+  
+  ### build random government on training set, then assess performance
+  ### with both dist's on test set.
+  
+  random.gov <- buildRandomGov(training.set, pixel.cols, num.of.committees,class.width)
+  
+  `%op%` <- if (parallel) {`%dopar%`} else {`%do%`}
+  
+  preds <- foreach(distance=c("euc","binary")) %op% {
+    predictRandomGov(random.gov,test.set,method="vanilla",dist=distance,parallel=F)
+  }
+  
+  euc.preds <- preds[[1]]
+  binary.preds <- preds[[2]]
+  euc.performance <- estimatePerformance(euc.preds,test.set.response)
+  binary.performance <- estimatePerformance(binary.preds,test.set.response)
+  
+  data.table(euclidean=euc.performance$accuracyEst,binary=binary.performance$accuracyEst)
+}
+
+crossValidateVanillaPerformance <- function(num.of.committees, class.width, full.data.dt, test.set.size,num.of.repeats=10,parallelize.folds=TRUE,parallelize.predictions=FALSE) {
+  require(doRNG)
+  require(data.table)
+  `%op%` <- if (parallelize.folds) {`%dorng%`} else {`%do%`}
+  set.seed(1234)
+  performance.results <- foreach(i=seq.int(num.of.repeats),.final=rbindlist) %op% {
+    assessVanillaPerformance(num.of.committees, class.width, full.data.dt, test.set.size, parallelize.predictions)
+  }
+  out <- cbind(num.of.committees=num.of.committees,class.width=class.width,performance.results[,lapply(.SD,mean)])
+  data.table(out)
+}
+
+
+###-----
+### note: for n committees, you need a building set of size at least 10*n.
+### so that you can have 10 distinct classes per committee.
+### You also want to have a test set of size >= 1k for decent 
+### estimation of accuracy. If you want to train, you should also try and
+### make a subset that has at least 3 samples from every class.
+### Thus, make sure your subset is at easily bigger than 1k + 10*n + 30.
+###----
+
+
+# microbenchmark(out1 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=TRUE), out2 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=FALSE),times=5)
 
 # 
 # out <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=50, threshold=0.92, method="prob") 
