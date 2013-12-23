@@ -3,7 +3,7 @@ library(class)
 library(foreach)
 
 ### need to register a separate backend if you want to use
-### foreach and %dopar%.
+### foreach and %dopar% -- use "source("R/determineParallelBackend.R")"
 
 ### --------------
 ### build routines

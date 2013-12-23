@@ -6,8 +6,7 @@ registerDoParallel(cores=detectCores())
 if (!"digit.data" %in% ls()) {
   source(file="R/load_data.R")
 }
-# key on label
-setkey(x=digit.data,label)
+
 pixel.cols <- colnames(digit.data)[which(!colnames(digit.data) %in% c("label"))]
 
 committeePredict <- function(random.house, committee.number, test.citizen, method="euclidean") {
