@@ -1,9 +1,9 @@
-### look into knn-based approach.
-library(microbenchmark)
 library(data.table)
 library(class)
-library(doParallel)
-registerDoParallel(cores=detectCores())
+library(foreach)
+
+### need to register a separate backend if you want to use
+### foreach and %dopar%.
 
 ### --------------
 ### build routines
@@ -100,7 +100,7 @@ trainRandomGov <- function(random.gov,training.set,training.set.response,method=
   } else if (method=="vanilla") {
     vector("list",length(random.gov))
   }
-   
+  
   ### store metascore table back inside random.gov (~ 1.29 ms)
   random.gov <- lapply(X=1:length(random.gov),FUN=function(i){
     random.gov[[i]]$metascore <- metascores[[i]]
@@ -126,10 +126,10 @@ vanillaWinner <- function(predictions) {
 rescalePredictions <- function(predictions,random.gov) {
   ### random.gov[[i]]$committee's vote == predictions[i]
   synthetic.votes <- sapply(X=seq.int(length(predictions)),
-         FUN=function(committee.num){
-           predicted.class <- predictions[committee.num]
-           rep(predicted.class,random.gov[[committee.num]]$metascore[predicted.class])
-         })
+                            FUN=function(committee.num){
+                              predicted.class <- predictions[committee.num]
+                              rep(predicted.class,random.gov[[committee.num]]$metascore[predicted.class])
+                            })
   return(unlist(synthetic.votes))
 }
 syntheticMetascoreWinner <- function(predictions,random.gov) { 
@@ -142,10 +142,10 @@ probMetaScoreWinner <- function(predictions,random.gov) {
   
   ### random.gov[[i]]$committee's vote == committee.predictions[i]
   candidate.certainties <- sapply(X=seq.int(length(predictions)),
-                            FUN=function(committee.num){
-                              predicted.class <- predictions[committee.num]
-                              random.gov[[committee.num]]$metascore[predicted.class]
-                            })
+                                  FUN=function(committee.num){
+                                    predicted.class <- predictions[committee.num]
+                                    random.gov[[committee.num]]$metascore[predicted.class]
+                                  })
   return(sample(predictions,size=1,prob=candidate.certainties))
 }
 
@@ -197,11 +197,11 @@ predictRandomGov <- function(random.gov,test.set,method="vanilla",dist="euclidea
       labels <- committee.obj$labels
       predictCommittee(training.set, test.set, labels, dist) 
     }
-      
+    
   } else {
     lapply(X=random.gov,FUN=function(committee.obj, test.set, dist){
       predictCommittee(committee.obj$committee, test.set, committee.obj$labels, dist) 
-      }, test.set, dist) 
+    }, test.set, dist) 
   }
   
   ### process results into matrix
@@ -248,7 +248,6 @@ if (!"digit.data" %in% ls()) {
 }
 
 assessVanillaPerformance <- function(num.of.committees, class.width, full.data.dt, test.set.size, parallel=FALSE) {
-  
   pixel.cols <- colnames(full.data.dt)[which(!colnames(full.data.dt) %in% c("label"))]
   
   ### randomly divide whole data into "test" and "training" sets
@@ -287,87 +286,10 @@ crossValidateVanillaPerformance <- function(num.of.committees, class.width, full
   require(data.table)
   `%op%` <- if (parallelize.folds) {`%dorng%`} else {`%do%`}
   set.seed(1234)
-  performance.results <- foreach(i=seq.int(num.of.repeats),.final=rbindlist) %op% {
+  performance.results <- foreach(i=seq.int(num.of.repeats),.final=rbindlist,.packages=c("data.table","class")) %op% {
     assessVanillaPerformance(num.of.committees, class.width, full.data.dt, test.set.size, parallelize.predictions)
   }
   out <- cbind(num.of.committees=num.of.committees,class.width=class.width,performance.results[,lapply(.SD,mean)])
   data.table(out)
 }
 
-
-###-----
-### note: for n committees, you need a building set of size at least 10*n.
-### so that you can have 10 distinct classes per committee.
-### You also want to have a test set of size >= 1k for decent 
-### estimation of accuracy. If you want to train, you should also try and
-### make a subset that has at least 3 samples from every class.
-### Thus, make sure your subset is at easily bigger than 1k + 10*n + 30.
-###----
-
-
-# microbenchmark(out1 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=TRUE), out2 <- buildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, build.type="g", num.of.committees=10, class.width=1, method="vanilla", dist="euclidean", iter.limit=3, threshold=0.8, parallel=FALSE),times=5)
-
-# 
-# out <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=50, threshold=0.92, method="prob") 
-# 
-# out2 <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=1, iter.limit=50, threshold=0.92, method="vanilla") 
-# 
-# out3 <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=3, iter.limit=15, threshold=0.92, method="prob") 
-# 
-# out4 <- selectiveBuildTrainPredict(building.set, training.set, training.set.response, test.set, test.set.response, class.width=45, iter.limit=1, threshold=0.92, method="vanilla") ; out4$performance
-
-### accuracy is affected by posterior probabilities and class.width
-
-
-# timing <- microbenchmark(out <- buildTrainPredict(num.of.committees,building.set,training.set,training.set.response,test.set,test.set.response,method="prob"),times=1)
-
-done <- FALSE
-if (done) {
-  print(timing) # ~148s for 1k building set, 1k test, 8k train, 100 committees
-  print(out$performance) # 46.1%
-  metascore.dt <- data.table(matrix(unlist(lapply(X=out$randomGov,FUN=function(list){list$metascore})),byrow=T,ncol=10))
-  best.committees.dt <- rbindlist(lapply(metascore.dt,function(col){data.table(max=max(col),row=which.max(col))}))
-  
-  pruned.random.gov <- out$randomGov[best.committees.dt[,row]]
-  pruned.predictions <- predictRandomGov(pruned.random.gov,test.set,method=method)
-  pruned.performance <- estimatePerformance(pruned.predictions,test.set.response) # 46.6%.
-  
-  
-  out <- selectivelyBuildRandomGov(building.set,training.set,training.set.response,15,0.92,TRUE)
-  
-}
-
-### sequential version that doesn't waste data:
-# is.trained <- rep(FALSE,10)
-# names(is.trained) <- as.factor(0:9)
-# iter <- 0
-# garbage <- vector("list",10)
-# while (iter < 100) {
-#   potential.committee <- building.set[,.SD[sample(x=.N, size=1)],by=label]
-#   potential.committee.input <- potential.committee[,!"label",with=FALSE]
-#   potential.committee.response <- potential.committee[,label]
-#   predictions <- knn(train=potential.committee.input,
-#                      test=training.set,
-#                      cl=potential.committee.response,k=1)
-#   counts <- table(predictions[predictions == training.set.response])
-#   proportions <- counts / table(predictions)
-#   
-#   if (any( (proportions > 0.92) & !is.trained )) {
-#       label.to.be.trained <- which.max((proportions > 0.92) & !is.trained)
-#       garbage[[label.to.be.trained]] <- potential.committee
-#       is.trained[label.to.be.trained] <- TRUE
-#   }
-#   iter <- iter+1
-# }
-
-
-# ### reference ~ 252.5 s
-# system.time(ref.preds <- knn(train=training.set,test=test.set,cl=training.set.response,k=1))
-# ### accuracy ~ 95%
-# sum(diag(table(ref.preds,test.set.response)))/length(test.set.response)
-
-### notes:
-### it seems that training set size can quickly lead to over-fitting.
-### I suspect there is a direct relationship between num.of.committees and
-### accuracy when vanilla voting is implemented. Also, results seem very 
-### dependent on distance used.
