@@ -1,7 +1,6 @@
 ### WARNING:
 ### this needs to be run from kag_digit_id/
 ### ---------------------
-library(data.table)
 
 ### check to see if data is loaded.
 if (!"digit.data" %in% ls()) {
@@ -18,6 +17,9 @@ if (!"digit.data" %in% ls()) {
       
       ### cast as data.table
       digit.data <- data.table(digit.data)
+      
+      # key on label
+      setkey(x=digit.data,label)
       
       ### save digit.data into .Rdata file
       save(digit.data, file="data_and_benchmarks/training_data.Rdata")
